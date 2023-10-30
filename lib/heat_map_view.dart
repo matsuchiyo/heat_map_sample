@@ -71,7 +71,7 @@ class _HeatMapState extends State<HeatMapView> {
       final color2 = srcColors[color1Index + 1];
       final double color2Weight = (i % countPer1Gradation) / countPer1Gradation;
       final resultColor = Color.fromARGB(
-        255,
+        (color1.alpha * (1.0 - color2Weight) + color2.alpha * color2Weight).toInt(),
         (color1.red * (1.0 - color2Weight) + color2.red * color2Weight).toInt(),
         (color1.green * (1.0 - color2Weight) + color2.green * color2Weight).toInt(),
         (color1.blue * (1.0 - color2Weight) + color2.blue * color2Weight).toInt(),
@@ -89,8 +89,8 @@ class _HeatMapState extends State<HeatMapView> {
     );
 
     for (final point in data) {
-      final x = (point.x * width).toInt();
-      final y = (point.y * height).toInt();
+      final x = point.x.toInt();
+      final y = point.y.toInt();
       if (x < 0 || x >= width || y < 0 || y >= height) continue;
 
       final oldPixel = image.getPixel(x, y);
@@ -114,7 +114,7 @@ class _HeatMapState extends State<HeatMapView> {
         if (value > 0) {
           final colorIndex = min(100 - 1, value * 100).floor();
           final color = colorsOfGradation[colorIndex];
-          resultImage.setPixelRgba(i, j, color.red, color.green, color.blue, 255);
+          resultImage.setPixelRgba(i, j, color.red, color.green, color.blue, color.alpha);
         }
       }
     }

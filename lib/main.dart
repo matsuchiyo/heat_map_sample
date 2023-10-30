@@ -3,7 +3,6 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:heat_map_sample/google_map_controller_extension.dart';
 import 'package:heat_map_sample/heat_map_view.dart';
 import 'package:heat_map_sample/lat_lng_bounds_extension.dart';
 
@@ -41,7 +40,7 @@ class _MyHomePageState extends State<MyHomePage> {
   late final List<WeightedLatLng> _mockData;
 
   final _controllerCompleter = Completer<GoogleMapController>();
-  LatLngBounds? _visibleRegion;
+  LatLng? _visibleRegionCenter;
 
   @override
   void initState() {
@@ -79,26 +78,25 @@ class _MyHomePageState extends State<MyHomePage> {
                     zoomControlsEnabled: false,
                     onCameraMoveStarted: () {
                       setState(() {
-                        _visibleRegion = null;
+                        _visibleRegionCenter = null;
                       });
                     },
                     // (2) onCameraIdleで、ユーザーのスクロール完了を検知します。スクロール完了時のvisibleRegionで、ヒートマップに表示するデータを再取得するようにします。
                     onCameraIdle: () async {
                       final controller = await _controllerCompleter.future;
-                      final visibleRegion = await controller.getVisibleRegionIncludingPadding(
-                        googleMapSizeIncludingPadding: Size(constraint.maxWidth, constraint.maxHeight),
-                        googleMapPadding: mapPadding,
-                      );
+                      final visibleRegion = await controller.getVisibleRegion();
                       setState(() {
-                        _visibleRegion = visibleRegion;
+                        _visibleRegionCenter = visibleRegion.center;
                       });
                     },
                   );
                 },
               ),
-              _visibleRegion == null ? const SizedBox() : FutureBuilder(
-                future: _getData(_visibleRegion!.center).then((weightedLatLngList) {
-                  return _convertLatLngToPoint(weightedLatLngList, _visibleRegion!);
+              _visibleRegionCenter == null ? const SizedBox() : FutureBuilder(
+                future: _getData(_visibleRegionCenter!).then((weightedLatLngList) {
+                  return _controllerCompleter.future.then((controller) {
+                    return _convertLatLngListToPointList(weightedLatLngList, controller);
+                  });
                 }),
                 builder: (context, snapshot) => !snapshot.hasData
                   ? const Center(
@@ -130,20 +128,19 @@ class _MyHomePageState extends State<MyHomePage> {
     return _mockData;
   }
 
-  List<WeightedPoint> _convertLatLngToPoint(List<WeightedLatLng> latLngList, LatLngBounds visibleRegion) {
-    final regionWestLng = visibleRegion.southwest.longitude;
-    final regionWidthInDegree = visibleRegion.widthInDegree;
-    final regionNorthLat = visibleRegion.northeast.latitude;
-    final regionHeightInDegree = visibleRegion.heightInDegree;
-    return latLngList.map((latLng) {
-      final lat = latLng.latitude;
-      final lng = latLng.longitude;
-      return WeightedPoint(
-        ((lng - regionWestLng) % 360) / regionWidthInDegree, // % 360 してあげると、regionが東経〜西経だった場合でも、距離(in 経度)が求められる。
-        (regionNorthLat - lat) / regionHeightInDegree,
-        latLng.weight,
-      );
-    }).toList();
+  Future<List<WeightedPoint>> _convertLatLngListToPointList(List<WeightedLatLng> latLngList, GoogleMapController controller) {
+    return latLngList.map((latLng) => _convertLatLngToPoint(latLng, controller))
+        .toList()
+        .wait;
+  }
+
+  Future<WeightedPoint> _convertLatLngToPoint(WeightedLatLng latLng, GoogleMapController controller) async {
+    final screenCoordinate = await controller.getScreenCoordinate(LatLng(latLng.latitude, latLng.longitude));
+    return WeightedPoint(
+      screenCoordinate.x.toDouble(),
+      screenCoordinate.y.toDouble(),
+      latLng.weight,
+    );
   }
 
   List<WeightedLatLng> _createMockData(LatLng location) {
